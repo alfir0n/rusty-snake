@@ -20,6 +20,14 @@ pub enum Direction {
     Right,
 }
 
+#[derive(Default, Clone, Debug,Serialize, Deserialize)]
+pub struct PlayerState {
+    pub name: String,
+    pub snake: Vec<Pos>,
+    pub dir: Direction,
+    pub latest_input: Option<Direction>,
+}
+
 impl Default for Direction {
     fn default() -> Self { Direction::Right }
 }
@@ -27,10 +35,8 @@ impl Default for Direction {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StateMsg {
     pub tick: u64,
-    pub snake1: Vec<Pos>,
-    pub snake2: Vec<Pos>,
-    pub dir1: Direction,
-    pub dir2: Direction,
+    pub player1: PlayerState,
+    pub player2: PlayerState,
     pub food: Pos,
     pub score1: u32,
     pub score2: u32,
@@ -40,7 +46,7 @@ pub struct StateMsg {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ClientMsg {
-    Join,
+    Join { name: String },
     Input { dir: Direction },
 }
 

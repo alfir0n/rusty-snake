@@ -7,17 +7,12 @@ use std::time::{Duration, Instant};
 
 use rand::Rng;
 use serde_json;
-
+use serde_json::Value::Null;
 use snake::game_core::{
-    ClientMsg, Direction, GRID_HEIGHT, GRID_WIDTH, MOVE_INTERVAL_MS, Pos, StateMsg, step_head,
+    ClientMsg, Direction, GRID_HEIGHT, GRID_WIDTH, MOVE_INTERVAL_MS, Pos, StateMsg, step_head, PlayerState
 };
 
-#[derive(Default)]
-struct PlayerState {
-    snake: Vec<Pos>,
-    dir: Direction,
-    latest_input: Option<Direction>,
-}
+
 
 struct ServerState {
     tick: u64,
@@ -44,11 +39,13 @@ impl ServerState {
         let mut s = Self {
             tick: 0,
             p1: PlayerState {
+                name: String::new(),
                 snake: vec![start1],
                 dir: Direction::Right,
                 latest_input: None,
             },
             p2: PlayerState {
+                name: String::new(),
                 snake: vec![start2],
                 dir: Direction::Left,
                 latest_input: None,
@@ -175,10 +172,8 @@ impl ServerState {
     fn snapshot(&self) -> StateMsg {
         StateMsg {
             tick: self.tick,
-            snake1: self.p1.snake.clone(),
-            snake2: self.p2.snake.clone(),
-            dir1: self.p1.dir,
-            dir2: self.p2.dir,
+            player1: self.p1.clone(),
+            player2: self.p2.clone(),
             food: self.food,
             score1: self.score1,
             score2: self.score2,
@@ -241,9 +236,15 @@ fn main() -> std::io::Result<()> {
         // handle any pending inputs (non-blocking)
         while let Ok((pid, msg)) = rx_inputs.try_recv() {
             match msg {
-                ClientMsg::Join => {
-                    // nothing required, player assigned on connect
+                ClientMsg::Join { name } => {
+                    match pid {
+                        1 => state.p1.name = name.clone(),
+                        2 => state.p2.name = name.clone(),
+                        _ => {}
+                    }
+                    println!("Welcome {}!", name );
                 }
+                // If
                 ClientMsg::Input { dir } => match pid {
                     1 => state.p1.latest_input = Some(dir),
                     2 => state.p2.latest_input = Some(dir),
