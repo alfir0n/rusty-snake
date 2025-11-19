@@ -1,3 +1,4 @@
+use std::fmt;
 use serde::{Deserialize, Serialize};
 
 // Shared game constants
@@ -5,6 +6,8 @@ pub const GRID_WIDTH: i32 = 60;
 pub const GRID_HEIGHT: i32 = 30;
 // Client owns CELL_SIZE for rendering; server ticks use MOVE_INTERVAL_MS
 pub const MOVE_INTERVAL_MS: u64 = 150; // ~6.67 FPS like original 0.15s
+
+pub const MAX_PLAYERS: usize = 1;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize, Default, Hash)]
 pub struct Pos {
@@ -20,12 +23,27 @@ pub enum Direction {
     Right,
 }
 
-#[derive(Default, Clone, Debug,Serialize, Deserialize)]
+#[derive(Clone, Debug,Serialize, Deserialize)]
 pub struct PlayerState {
     pub name: String,
     pub snake: Vec<Pos>,
     pub dir: Direction,
+    pub score: u32,
     pub latest_input: Option<Direction>,
+    pub dead: bool,
+}
+
+impl Default for PlayerState {
+    fn default() -> Self {
+        PlayerState {
+            name: "".to_string(),
+            snake: vec![Pos{ x: 0, y: 0}],
+            dir: Default::default(),
+            score: 0,
+            latest_input: None,
+            dead: false,
+        }
+    }
 }
 
 impl Default for Direction {
@@ -35,13 +53,10 @@ impl Default for Direction {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StateMsg {
     pub tick: u64,
-    pub player1: PlayerState,
-    pub player2: PlayerState,
+    pub players: Vec<PlayerState>,
     pub food: Pos,
-    pub score1: u32,
-    pub score2: u32,
     pub game_over: bool,
-    pub winner: Option<u8>, // 1 or 2; None for draw
+    pub winner: Option<u8>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -49,6 +64,19 @@ pub enum ClientMsg {
     Join { name: String },
     Input { dir: Direction },
 }
+
+impl fmt::Display for Direction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let dir_str = match self {
+            Direction::Up => "Up",
+            Direction::Down => "Down",
+            Direction::Left => "Left",
+            Direction::Right => "Right",
+        };
+        write!(f, "{}", dir_str)
+    }
+}
+
 
 // Helpers shared by server for wrapping and stepping
 pub fn step_head(mut head: Pos, dir: Direction) -> Pos {

@@ -1,26 +1,19 @@
-use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use rand::Rng;
 use serde_json;
-use serde_json::Value::Null;
-use snake::game_core::{
-    ClientMsg, Direction, GRID_HEIGHT, GRID_WIDTH, MOVE_INTERVAL_MS, Pos, StateMsg, step_head, PlayerState
-};
+use snake::game_core::{ClientMsg, Direction, GRID_HEIGHT, GRID_WIDTH, MOVE_INTERVAL_MS, Pos, StateMsg, step_head, PlayerState, MAX_PLAYERS};
 
 
 
 struct ServerState {
     tick: u64,
-    p1: PlayerState,
-    p2: PlayerState,
+    players: Vec<PlayerState>,
     food: Pos,
-    score1: u32,
-    score2: u32,
     game_over: bool,
     winner: Option<u8>,
 }
@@ -28,34 +21,13 @@ struct ServerState {
 impl ServerState {
     fn new() -> Self {
         let mut rng = rand::thread_rng();
-        let start1 = Pos {
-            x: GRID_WIDTH / 2 - 3,
-            y: GRID_HEIGHT / 2,
-        };
-        let start2 = Pos {
-            x: GRID_WIDTH / 2 + 3,
-            y: GRID_HEIGHT / 2,
-        };
         let mut s = Self {
             tick: 0,
-            p1: PlayerState {
-                name: String::new(),
-                snake: vec![start1],
-                dir: Direction::Right,
-                latest_input: None,
-            },
-            p2: PlayerState {
-                name: String::new(),
-                snake: vec![start2],
-                dir: Direction::Left,
-                latest_input: None,
-            },
+            players: vec![PlayerState::default(); MAX_PLAYERS],
             food: Pos {
                 x: rng.gen_range(0..GRID_WIDTH),
                 y: rng.gen_range(0..GRID_HEIGHT),
             },
-            score1: 0,
-            score2: 0,
             game_over: false,
             winner: None,
         };
@@ -64,7 +36,12 @@ impl ServerState {
     }
 
     fn contains_any(&self, pos: &Pos) -> bool {
-        self.p1.snake.contains(pos) || self.p2.snake.contains(pos)
+        for player in self.players.iter() {
+            if player.snake.contains(pos) {
+                true;
+            }
+        }
+        false
     }
 
     fn respawn_food(&mut self) {
@@ -82,27 +59,20 @@ impl ServerState {
     }
 
     fn apply_inputs(&mut self) {
-        // prevent 180° turns
-        if let Some(d) = self.p1.latest_input.take() {
-            let opposite = match self.p1.dir {
-                Direction::Up => Direction::Down,
-                Direction::Down => Direction::Up,
-                Direction::Left => Direction::Right,
-                Direction::Right => Direction::Left,
-            };
-            if d != opposite {
-                self.p1.dir = d;
-            }
-        }
-        if let Some(d) = self.p2.latest_input.take() {
-            let opposite = match self.p2.dir {
-                Direction::Up => Direction::Down,
-                Direction::Down => Direction::Up,
-                Direction::Left => Direction::Right,
-                Direction::Right => Direction::Left,
-            };
-            if d != opposite {
-                self.p2.dir = d;
+
+        for player in self.players.iter_mut() {
+            // prevent 180 deg turn
+            if let Some(dir) = player.latest_input.take() {
+                let opposite = match player.dir {
+                    Direction::Up => Direction::Down,
+                    Direction::Down => Direction::Up,
+                    Direction::Left => Direction::Right,
+                    Direction::Right => Direction::Left,
+                };
+
+                if dir != opposite {
+                    player.dir = dir;
+                }
             }
         }
     }
@@ -111,72 +81,61 @@ impl ServerState {
         if self.game_over {
             return;
         }
+
         self.tick += 1;
         self.apply_inputs();
 
-        let h1 = step_head(*self.p1.snake.first().unwrap(), self.p1.dir);
-        let h2 = step_head(*self.p2.snake.first().unwrap(), self.p2.dir);
+        // calculate new positions
+        let mut new_positions = [Pos::default(); MAX_PLAYERS];
+        for (i, player) in self.players.iter_mut().enumerate() {
+            let snake_head = *player.snake.first().unwrap();
+            new_positions[i] = step_head( snake_head, player.dir);
 
-        // collisions
-        let p1_hits_self = self.p1.snake.contains(&h1);
-        let p2_hits_self = self.p2.snake.contains(&h2);
-        let p1_hits_p2 = self.p2.snake.contains(&h1);
-        let p2_hits_p1 = self.p1.snake.contains(&h2);
-
-        if (p1_hits_self || p1_hits_p2) && (p2_hits_self || p2_hits_p1) {
-            self.game_over = true;
-            self.winner = None;
-            return;
-        }
-        if p1_hits_self || p1_hits_p2 {
-            self.game_over = true;
-            self.winner = Some(2);
-            return;
-        }
-        if p2_hits_self || p2_hits_p1 {
-            self.game_over = true;
-            self.winner = Some(1);
-            return;
         }
 
-        let p1_eats = h1 == self.food;
-        let p2_eats = h2 == self.food;
-
-        self.p1.snake.insert(0, h1);
-        self.p2.snake.insert(0, h2);
-
-        match (p1_eats, p2_eats) {
-            (true, false) => {
-                self.score1 += 1;
-                self.respawn_food();
-                self.p2.snake.pop();
-            }
-            (false, true) => {
-                self.score2 += 1;
-                self.respawn_food();
-                self.p1.snake.pop();
-
-            }
-            (true, true) => {
-                self.score1 += 1;
-                self.score2 += 1;
-                self.respawn_food();
-            }
-            (false, false) => {
-                self.p1.snake.pop();
-                self.p2.snake.pop();
+        // detect collisions and derive player status
+        let mut player_status = [false; MAX_PLAYERS];
+        for (i, pos) in new_positions.iter().enumerate() {
+            for player in self.players.iter() {
+                if !player.dead{
+                    player_status[i] = player.snake.contains(pos);
+                }
             }
         }
+        //update player status
+        for (i, status) in player_status.iter().enumerate() {
+            self.players[i].dead = *status;
+        }
+
+        // check if and which player grabs food
+        let mut player_grabbed_food = None;
+        for (i, pos) in new_positions.iter().enumerate() {
+            if self.food == *pos && !self.players[i].dead {
+                player_grabbed_food = Some(i);
+            }
+        }
+
+
+        //process next steps for player's snake
+        for (i, pos) in new_positions.iter().enumerate() {
+            if !self.players[i].dead {
+                self.players[i].snake.insert(0, *pos);
+                if player_grabbed_food != None && player_grabbed_food.unwrap() == i {
+                    self.respawn_food();
+                    self.players[i].score += 1;
+                }
+                else { self.players[i].snake.pop(); }
+            }
+        }
+
+
     }
 
     fn snapshot(&self) -> StateMsg {
         StateMsg {
             tick: self.tick,
-            player1: self.p1.clone(),
-            player2: self.p2.clone(),
+            players: self.players.clone(),
             food: self.food,
-            score1: self.score1,
-            score2: self.score2,
             game_over: self.game_over,
             winner: self.winner,
         }
@@ -214,7 +173,7 @@ fn main() -> std::io::Result<()> {
 
     // Accept up to two clients
     let mut writers: Vec<(u8, TcpStream)> = Vec::new();
-    for player_id in 1u8..=2u8 {
+    for player_id in 1..=MAX_PLAYERS as u8 {
         let (stream, addr) = listener.accept()?;
         println!("Client connected: {} as Player {}", addr, player_id);
         stream.set_nodelay(true).ok();
@@ -237,19 +196,14 @@ fn main() -> std::io::Result<()> {
         while let Ok((pid, msg)) = rx_inputs.try_recv() {
             match msg {
                 ClientMsg::Join { name } => {
-                    match pid {
-                        1 => state.p1.name = name.clone(),
-                        2 => state.p2.name = name.clone(),
-                        _ => {}
-                    }
+                    state.players[pid as usize - 1].name = name.clone();
                     println!("Welcome {}!", name );
                 }
                 // If
-                ClientMsg::Input { dir } => match pid {
-                    1 => state.p1.latest_input = Some(dir),
-                    2 => state.p2.latest_input = Some(dir),
-                    _ => {}
-                },
+                ClientMsg::Input { dir } => {
+                    state.players[pid as usize - 1].latest_input = Some(dir);
+                    println!("{} : {}", state.players[pid as usize - 1].name, dir.to_string() )
+                }
             }
         }
 

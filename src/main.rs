@@ -204,18 +204,24 @@ async fn main() {
 
             // Render
             if let Some(state) = &latest_state {
-                for (i, s) in state.player1.snake.iter().enumerate() {
-                    draw_rect_at(*s, if i == 0 { BLUE } else { DARKBLUE });
+
+                for p in state.players.iter() {
+                    for (i, s) in p.snake.iter().enumerate() {
+                        draw_rect_at(*s, if i == 0 { BLUE } else { DARKBLUE });
+                    }
                 }
-                for (i, s) in state.player2.snake.iter().enumerate() {
-                    draw_rect_at(*s, if i == 0 { GREEN } else { DARKGREEN });
-                }
+
                 draw_rect_at(state.food, RED);
 
-                draw_text(
-                    &format!("P1({}): {}  P2({}): {}  Tick: {}", state.player1.name, state.score1, state.player2.name, state.score2, state.tick),
-                    10.0, 20.0, 24.0, WHITE,
-                );
+                let mut score_line = String::new();
+                for p in state.players.iter() {
+                    let  line= format!("{}: {}", p.name, p.score);
+                    score_line += &line;
+                }
+
+                score_line += &format!("Ticks: {}", state.tick);
+
+                draw_text(&score_line, 10.0, 20.0, 24.0, WHITE );
 
                 if state.game_over {
                     let text = match state.winner {
