@@ -85,6 +85,11 @@ impl ServerState {
         self.tick += 1;
         self.apply_inputs();
 
+        // print player's status
+        for player in self.players.iter() {
+            println!("Player: {} is dead: {}", player.name, player.dead);
+        }
+
         // calculate new positions
         let mut new_positions = [Pos::default(); MAX_PLAYERS];
         for (i, player) in self.players.iter_mut().enumerate() {
