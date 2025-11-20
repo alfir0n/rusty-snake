@@ -93,24 +93,22 @@ impl ServerState {
         // calculate new positions
         let mut new_positions = [Pos::default(); MAX_PLAYERS];
         for (i, player) in self.players.iter_mut().enumerate() {
-            let snake_head = *player.snake.first().unwrap();
-            new_positions[i] = step_head( snake_head, player.dir);
-
+            if !player.dead {
+                let snake_head = *player.snake.first().unwrap();
+                new_positions[i] = step_head( snake_head, player.dir);
+            }
         }
 
         // detect collisions and derive player status
-        let mut player_status = [false; MAX_PLAYERS];
-        for (i, pos) in new_positions.iter().enumerate() {
-            for player in self.players.iter() {
+        for pos in new_positions.iter() {
+            for player in self.players.iter_mut() {
                 if !player.dead{
-                    player_status[i] = player.snake.contains(pos);
+                    let is_dead = player.snake.contains(pos);
+                    player.dead = is_dead;
                 }
             }
         }
-        //update player status
-        for (i, status) in player_status.iter().enumerate() {
-            self.players[i].dead = *status;
-        }
+
 
         // check if and which player grabs food
         let mut player_grabbed_food = None;
