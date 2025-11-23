@@ -205,7 +205,12 @@ async fn main() {
             // Render
             if let Some(state) = &latest_state {
 
+                let mut game_over = false;
+
                 for p in state.players.iter() {
+                    if p.name == username && p.dead == true{
+                        game_over = true;
+                    }
                     for (i, s) in p.snake.iter().enumerate() {
                         draw_rect_at(*s, if i == 0 { BLUE } else { DARKBLUE });
                     }
@@ -215,7 +220,7 @@ async fn main() {
 
                 let mut score_line = String::new();
                 for p in state.players.iter() {
-                    let  line= format!("{}: {}", p.name, p.score);
+                    let  line= format!("{}: {} | ", p.name, p.score);
                     score_line += &line;
                 }
 
@@ -223,13 +228,8 @@ async fn main() {
 
                 draw_text(&score_line, 10.0, 20.0, 24.0, WHITE );
 
-                if state.game_over {
-                    let text = match state.winner {
-                        Some(1) => "Game Over - Player 1 wins!",
-                        Some(2) => "Game Over - Player 2 wins!",
-                        None => "Game Over - Draw!",
-                        _ => "Game Over",
-                    };
+                if game_over {
+                    let text = "Game Over";
                     let ts = measure_text(text, None, 30, 1.0);
                     draw_text(text, (screen_w - ts.width) / 2.0, screen_h / 2.0, 30.0, YELLOW);
                 }
