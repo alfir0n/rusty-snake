@@ -7,7 +7,7 @@ pub const GRID_HEIGHT: i32 = 30;
 // Client owns CELL_SIZE for rendering; server ticks use MOVE_INTERVAL_MS
 pub const MOVE_INTERVAL_MS: u64 = 150; // ~6.67 FPS like original 0.15s
 
-pub const MAX_PLAYERS: usize = 1;
+pub const DEFAULT_MAX_PLAYERS: usize = 2;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize, Default, Hash)]
 pub struct Pos {

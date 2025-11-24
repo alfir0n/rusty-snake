@@ -4,11 +4,18 @@ use std::sync::{mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use clap::Parser;
 use rand::Rng;
 use serde_json;
-use snake::game_core::{ClientMsg, Direction, GRID_HEIGHT, GRID_WIDTH, MOVE_INTERVAL_MS, Pos, StateMsg, step_head, PlayerState, MAX_PLAYERS};
+use snake::game_core::{ClientMsg, Direction, GRID_HEIGHT, GRID_WIDTH, MOVE_INTERVAL_MS, Pos, StateMsg, step_head, PlayerState, DEFAULT_MAX_PLAYERS};
 
 
+#[derive(Parser, Debug)]
+#[command(author, version, about)]
+struct Cli {
+    #[arg(long, default_value_t = DEFAULT_MAX_PLAYERS)]
+    max_players: usize,
+}
 
 struct ServerState {
     tick: u64,
@@ -23,7 +30,7 @@ impl ServerState {
         let mut rng = rand::thread_rng();
         let mut s = Self {
             tick: 0,
-            players: vec![PlayerState::default(); MAX_PLAYERS],
+            players: vec![PlayerState::default(); DEFAULT_MAX_PLAYERS],
             food: Pos {
                 x: rng.gen_range(0..GRID_WIDTH),
                 y: rng.gen_range(0..GRID_HEIGHT),
@@ -85,13 +92,8 @@ impl ServerState {
         self.tick += 1;
         self.apply_inputs();
 
-        // print player's status
-        for player in self.players.iter() {
-            println!("Player: {} is dead: {}", player.name, player.dead);
-        }
-
         // calculate new positions
-        let mut new_positions = [Pos::default(); MAX_PLAYERS];
+        let mut new_positions = [Pos::default(); DEFAULT_MAX_PLAYERS];
         for (i, player) in self.players.iter_mut().enumerate() {
             if !player.dead {
                 let snake_head = *player.snake.first().unwrap();
@@ -169,14 +171,18 @@ fn spawn_reader(stream: TcpStream, player_slot: u8, tx_inputs: mpsc::Sender<(u8,
 }
 
 fn main() -> std::io::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:4000")?;
-    println!("Server listening on 127.0.0.1:4000");
+
+    let cli = Cli::parse();
+
+    let listener = TcpListener::bind("0.0.0.0:4000")?;
+    println!("Server listening on 0.0.0.0:4000");
+    println!("Waiting for {} player(s).", cli.max_players);
 
     let (tx_inputs, rx_inputs) = mpsc::channel::<(u8, ClientMsg)>();
 
     // Accept up to two clients
     let mut writers: Vec<(u8, TcpStream)> = Vec::new();
-    for player_id in 1..=MAX_PLAYERS as u8 {
+    for player_id in 1..=cli.max_players as u8 {
         let (stream, addr) = listener.accept()?;
         println!("Client connected: {} as Player {}", addr, player_id);
         stream.set_nodelay(true).ok();
